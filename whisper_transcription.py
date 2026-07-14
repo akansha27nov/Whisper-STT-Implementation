@@ -5,6 +5,7 @@ Description: use OpenAI's Whisper API to transcribe audio files
 """
 
 import os
+import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
 from openai import OpenAI
@@ -15,10 +16,11 @@ from openai import OpenAI
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+TRANSCRIPTION_DATA_DIR = Path("transcriptions")
+AUDIO_DATA_DIR = Path("audio")
 # ======================================================
 # Step 2: Verify downloaded file is accessible
 # ======================================================
-AUDIO_DATA_DIR = Path("audio")
 def verify_audio_file(file_path_str):
     file_path = Path(file_path_str)
     if not file_path.exists():
@@ -45,6 +47,11 @@ def transcribe_audio_file_as_is():
             model="whisper-1",
             file=audio_file
         )
+    # save the result to a text file
+    output_path = Path(TRANSCRIPTION_DATA_DIR/"transcript_basic.txt")
+    output_path.write_text(transcript.text, encoding="utf-8")
+    print(f"Unguided transcription saved to {output_path}")
+    
     return transcript
 
 transcription_text = transcribe_audio_file_as_is()
@@ -56,3 +63,80 @@ print("-" * 40)
 # ======================================================
 # Step 4: Transcription with Prompts (Guided Approach)
 # ======================================================
+def transcribe_audio_file_with_prompt():
+    with open(audio_path, "rb") as audio_file:
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            prompt="This is an interview about the moon landing, Maine, soil sample, kangaroo walk."
+        )
+    # save the result to a text file
+    output_path = Path(TRANSCRIPTION_DATA_DIR/"transcript_prompted.txt")
+    output_path.write_text(transcript.text, encoding="utf-8")
+    
+    return transcript
+
+result = transcribe_audio_file_with_prompt()
+
+print("--- Prompted Transcription ---")
+print(result.text)
+
+# ====================================================================
+# Step 5: Transcription Without Prompts (Unguided Approach) & compare
+# ====================================================================
+
+# this is same as step 3, transcription without prompt and 
+# result is saved in a file.
+
+basic_transcripted_file = TRANSCRIPTION_DATA_DIR/"transcript_basic.txt"
+prompted_file = TRANSCRIPTION_DATA_DIR/"transcript_prompted.txt"
+
+def analyse_transcripts():
+    # load files
+    with open(prompted_file, 'r') as f: prompted_text = f.read()
+    with open(basic_transcripted_file, 'r') as f: unguided_text = f.read()
+    
+    # split into sentences to compare
+    unguided_sentences = [s.strip() for s in unguided_text.split('.') if s.strip()]
+    prompted_sentences = [s.strip() for s in prompted_text.split('.') if s.strip()]
+
+    results = []
+    
+    for i, (orig, trans) in enumerate(zip(unguided_sentences, prompted_sentences)):
+        # find Similarity
+        orig_w = set(orig.lower().split())
+        trans_w = set(prompted_sentences[i].lower().split())
+        
+        # find overlap between basic transciption and prompted transcription
+        intersection = orig_w.intersection(trans_w)
+        similarity = (len(intersection) / len(orig_w)) * 100 if orig_w else 0
+        
+        results.append({
+            'sentence_id': i + 1,
+            'condition': 'prompted',
+            'original': orig, # meaning basic text
+            'transcription': trans, # prmopted transcription
+            'word_accuracy': round(similarity, 2),
+            'exact_match': (orig.lower() == trans.lower())
+        })
+    
+    return results
+
+result_analysis = analyse_transcripts()
+df_results = pd.DataFrame(result_analysis)
+
+for sentence_id in range(1, len(result_analysis) + 1):
+    row = df_results[df_results['sentence_id'] == sentence_id].iloc[0]
+    status = "✅" if row['exact_match'] else "⚠️"
+    
+    print(f"\n### Sentence {sentence_id}")
+    print(f"{status} Comparison (Unguided vs Prompted):")
+    print(f"   Unprompted: \"{row['original']}\"")
+    print(f"   Prompted: \"{row['transcription']}\"")
+    print(f"   Similarity: {row['word_accuracy']}%")
+
+# ===========================================
+# Step 6: Implementing Audio Chunking
+# ===========================================
+
+
