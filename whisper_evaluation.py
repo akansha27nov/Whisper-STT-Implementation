@@ -40,7 +40,7 @@ print("✅ Saved to 'akansha_recording.wav'")
 
 print("Starting transcription using code from whisper_transcription.py...")
 
-result = transcribe_audio_file_as_is(audio=recording_path)
+result = transcribe_audio_file_as_is(audio=recording_path,output_filename="transcript_evaluation.txt")
 
 print("Transcription complete!\n", result.text)
 

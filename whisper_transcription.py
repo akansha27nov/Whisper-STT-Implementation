@@ -44,7 +44,7 @@ def verify_audio_file(file_path_str):
 # ======================================================
 # Step 3: Basic Transcription (Without Chunking)
 # ======================================================
-def transcribe_audio_file_as_is(audio):
+def transcribe_audio_file_as_is(audio, output_filename="transcript_basic.txt"):
     
     with open(audio, "rb") as audio_file:
         print("🤖 Transcribing with Whisper...")
@@ -53,7 +53,7 @@ def transcribe_audio_file_as_is(audio):
             file=audio_file
         )
     # save the result to a text file
-    output_path = Path(TRANSCRIPTION_DATA_DIR/"transcript_basic.txt")
+    output_path = Path(TRANSCRIPTION_DATA_DIR/output_filename)
     output_path.write_text(transcript.text, encoding="utf-8")
     print(f"Unguided transcription saved to {output_path}")
     
@@ -62,7 +62,7 @@ def transcribe_audio_file_as_is(audio):
 # ======================================================
 # Step 4: Transcription with Prompts (Guided Approach)
 # ======================================================
-def transcribe_audio_file_with_prompt(audio, prompt_txt):
+def transcribe_audio_file_with_prompt(audio, prompt_txt, output_filename="transcript_prompted.txt"):
     with open(audio, "rb") as audio_file:
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
@@ -70,7 +70,7 @@ def transcribe_audio_file_with_prompt(audio, prompt_txt):
             prompt=prompt_txt
         )
     # save the result to a text file
-    output_path = Path(TRANSCRIPTION_DATA_DIR/"transcript_prompted.txt")
+    output_path = Path(TRANSCRIPTION_DATA_DIR/output_filename)
     output_path.write_text(transcript.text, encoding="utf-8")
     
     return transcript
