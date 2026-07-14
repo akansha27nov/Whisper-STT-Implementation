@@ -21,6 +21,11 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 TRANSCRIPTION_DATA_DIR = Path("transcriptions")
 AUDIO_DATA_DIR = Path("audio")
 audio_path = AUDIO_DATA_DIR / "CA138clip.mp3"
+prompt_for_transcription = "This is an interview about the moon landing, Maine, soil sample, kangaroo walk."
+
+# Going forward, this filw will be divided into 2 parts:
+# first is function definitions only
+# second is testing
 # ======================================================
 # Step 2: Verify downloaded file is accessible
 # ======================================================
@@ -36,14 +41,12 @@ def verify_audio_file(file_path_str):
 
     print(f"File found at: {file_path.absolute()}")
 
-verify_audio_file(audio_path)
-
 # ======================================================
 # Step 3: Basic Transcription (Without Chunking)
 # ======================================================
-def transcribe_audio_file_as_is():
+def transcribe_audio_file_as_is(audio):
     
-    with open(audio_path, "rb") as audio_file:
+    with open(audio, "rb") as audio_file:
         print("🤖 Transcribing with Whisper...")
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
@@ -56,32 +59,21 @@ def transcribe_audio_file_as_is():
     
     return transcript
 
-transcription_text = transcribe_audio_file_as_is()
-print("\n📝 Transcription:")
-print("-" * 40)
-print(transcription_text.text)
-print("-" * 40)
-
 # ======================================================
 # Step 4: Transcription with Prompts (Guided Approach)
 # ======================================================
-def transcribe_audio_file_with_prompt():
-    with open(audio_path, "rb") as audio_file:
+def transcribe_audio_file_with_prompt(audio, prompt_txt):
+    with open(audio, "rb") as audio_file:
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
-            prompt="This is an interview about the moon landing, Maine, soil sample, kangaroo walk."
+            prompt=prompt_txt
         )
     # save the result to a text file
     output_path = Path(TRANSCRIPTION_DATA_DIR/"transcript_prompted.txt")
     output_path.write_text(transcript.text, encoding="utf-8")
     
     return transcript
-
-result = transcribe_audio_file_with_prompt()
-
-print("--- Prompted Transcription ---")
-print(result.text)
 
 # ====================================================================
 # Step 5: Transcription Without Prompts (Unguided Approach) & compare
@@ -124,19 +116,6 @@ def analyse_transcripts():
     
     return results
 
-result_analysis = analyse_transcripts()
-df_results = pd.DataFrame(result_analysis)
-
-for sentence_id in range(1, len(result_analysis) + 1):
-    row = df_results[df_results['sentence_id'] == sentence_id].iloc[0]
-    status = "✅" if row['word_accuracy'] >= 99.0 else "⚠️"
-    
-    print(f"\n### Sentence {sentence_id}")
-    print(f"{status} Comparison (Unguided vs Prompted):")
-    print(f"   Unprompted: \"{row['original']}\"")
-    print(f"   Prompted: \"{row['transcription']}\"")
-    print(f"   Similarity: {row['word_accuracy']}%")
-
 # ===========================================
 # Step 6: Implementing Audio Chunking
 # ===========================================
@@ -159,16 +138,6 @@ def create_audio_chunks(input_path, output_dir, minutes=0.5):
         chunk.export(filename, format="mp3")
         print(f"Exported: {filename}") # export chunks in a file
         counter += 1
-    
-
-create_audio_chunks(
-    input_path=audio_path, 
-    output_dir=AUDIO_DATA_DIR / "chunks",
-    minutes=0.5
-)
-
-files = list((AUDIO_DATA_DIR / "chunks").glob("*.mp3"))
-print(f"Successfully created {len(files)} chunks.")
 
 # ======================================================
 # Step 7: Transcribing Chunks with Timestamps
@@ -201,29 +170,53 @@ def transcribe_chunks_with_timestamps(chunk_dir, offset_sec=30):
         current_offset += offset_sec
         
     return full_transcript
-
-final_data = transcribe_chunks_with_timestamps(AUDIO_DATA_DIR / "chunks", offset_sec=30)
-
-# print final transcription result
-for item in final_data:
-    print(f"[{item['start']}s - {item['end']}s]: {item['text']}")
     
 # ======================================================
-# Step 8: Exporting with Timestamps
+# Testing Block: Execution goes HERE
 # ======================================================
-
-# save to a json
-with open("final_transcript.json", "w") as f:
-    json.dump(final_data, f, indent=4)
+if __name__ == "__main__":
+    print("Running original transcription script...")
     
-# export to txt file
-with open("final_transcript.txt", "w") as f:
-    for item in final_data:
-        f.write(f"[{item['start']}s - {item['end']}s]: {item['text']}\n")
-print("✅ Exported: final_transcript.txt")
+    # Step 2
+    verify_audio_file(audio_path)
+    # Step 3
+    transcription_text = transcribe_audio_file_as_is(audio_path)
+    print("\n📝 Transcription:\n", "-" * 40, "\n", transcription_text.text, "\n", "-" * 40)
+    
+    # Step 4
+    result = transcribe_audio_file_with_prompt(audio_path, prompt_for_transcription)
+    print("--- Prompted Transcription ---\n", result.text)
+    
+    # Step 5
+    result_analysis = analyse_transcripts()
+    df_results = pd.DataFrame(result_analysis)
+    for sentence_id in range(1, len(result_analysis) + 1):
+        row = df_results[df_results['sentence_id'] == sentence_id].iloc[0]
+        status = "✅" if row['word_accuracy'] >= 99.0 else "⚠️"
+        print(f"\n### Sentence {sentence_id}")
+        print(f"{status} Comparison (Unguided vs Prompted):")
+        print(f"   Unprompted: \"{row['original']}\"")
+        print(f"   Prompted: \"{row['transcription']}\"")
+        print(f"   Similarity: {row['word_accuracy']}%")
+    
+    # Step 6
+    create_audio_chunks(audio_path, AUDIO_DATA_DIR / "chunks", 0.5)
+    
+    # Step 7 & 8
+    final_data = transcribe_chunks_with_timestamps(AUDIO_DATA_DIR / "chunks", 30)
 
-# export to SRT (Subtitles)
-with open("final_transcript.srt", "w") as f:
-    for i, item in enumerate(final_data, 1):
-       f.write(f"{i}\n{item['start']} --> {item['end']}\n{item['text']}\n\n")
-print("✅ Exported: final_transcript.srt")
+    
+    with open("final_transcript.json", "w") as f:
+        json.dump(final_data, f, indent=4)
+        
+    # export to txt file
+    with open("final_transcript.txt", "w") as f:
+        for item in final_data:
+            f.write(f"[{item['start']}s - {item['end']}s]: {item['text']}\n")
+    
+    # export to SRT (Subtitles)
+    with open("final_transcript.srt", "w") as f:
+        for i, item in enumerate(final_data, 1):
+            f.write(f"{i}\n{item['start']} --> {item['end']}\n{item['text']}\n\n")
+            
+    print("✅ Exported: final_transcript.txt, final_transcript.srt and json")
