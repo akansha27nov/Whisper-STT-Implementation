@@ -9,6 +9,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
 from openai import OpenAI
+from pydub import AudioSegment
 
 # ======================================================
 # Step 1: Setting Up and Loading api key
@@ -18,6 +19,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 TRANSCRIPTION_DATA_DIR = Path("transcriptions")
 AUDIO_DATA_DIR = Path("audio")
+audio_path = AUDIO_DATA_DIR / "CA138clip.mp3"
 # ======================================================
 # Step 2: Verify downloaded file is accessible
 # ======================================================
@@ -33,7 +35,6 @@ def verify_audio_file(file_path_str):
 
     print(f"File found at: {file_path.absolute()}")
 
-audio_path = AUDIO_DATA_DIR / "CA138clip.mp3"
 verify_audio_file(audio_path)
 
 # ======================================================
@@ -139,4 +140,31 @@ for sentence_id in range(1, len(result_analysis) + 1):
 # Step 6: Implementing Audio Chunking
 # ===========================================
 
+#split audio into segments using ffmpeg.
+def create_audio_chunks(input_path, output_dir, minutes=0.5):
+    audio = AudioSegment.from_file(input_path)
+    print(f"Total audio duration is {len(audio) / 1000:.2f} seconds.")
+    
+    chunk_length_ms = int(minutes * 60 * 1000)
+    
+    # create the output directory to save chunks
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    counter = 1
+    for i in range(0, len(audio), chunk_length_ms):
+        chunk = audio[i : i + chunk_length_ms]
+        filename = output_path / f"chunk_{counter:03d}.mp3"
+        chunk.export(filename, format="mp3")
+        print(f"Exported: {filename}") # export chunks in a file
+        counter += 1
+    
 
+create_audio_chunks(
+    input_path=audio_path, 
+    output_dir=AUDIO_DATA_DIR / "chunks",
+    minutes=0.5
+)
+
+files = list((AUDIO_DATA_DIR / "chunks").glob("*.mp3"))
+print(f"Successfully created {len(files)} chunks.")
