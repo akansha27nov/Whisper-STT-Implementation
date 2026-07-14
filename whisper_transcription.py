@@ -5,6 +5,7 @@ Description: use OpenAI's Whisper API to transcribe audio files
 """
 
 import os
+import json
 import pandas as pd
 from dotenv import load_dotenv
 from pathlib import Path
@@ -128,7 +129,7 @@ df_results = pd.DataFrame(result_analysis)
 
 for sentence_id in range(1, len(result_analysis) + 1):
     row = df_results[df_results['sentence_id'] == sentence_id].iloc[0]
-    status = "✅" if row['exact_match'] else "⚠️"
+    status = "✅" if row['word_accuracy'] >= 99.0 else "⚠️"
     
     print(f"\n### Sentence {sentence_id}")
     print(f"{status} Comparison (Unguided vs Prompted):")
@@ -168,3 +169,61 @@ create_audio_chunks(
 
 files = list((AUDIO_DATA_DIR / "chunks").glob("*.mp3"))
 print(f"Successfully created {len(files)} chunks.")
+
+# ======================================================
+# Step 7: Transcribing Chunks with Timestamps
+# ======================================================
+
+def transcribe_chunks_with_timestamps(chunk_dir, offset_sec=30):
+    chunk_files = sorted(list(Path(chunk_dir).glob("*.mp3")))
+    full_transcript = []
+    current_offset = 0
+    for chunk_path in chunk_files:
+        print(f"Transcribing {chunk_path.name}...")
+        with open(chunk_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1", 
+                file=audio_file,
+                response_format="verbose_json" # to get timestamp data
+            )
+        
+        for segment in transcript.segments:
+            adjusted_start = segment.start + current_offset
+            adjusted_end = segment.end + current_offset
+        
+            full_transcript.append({
+                "start": round(adjusted_start, 2),
+                "end": round(adjusted_end, 2),
+                "text": segment.text.strip()
+            })
+            
+        # Increase the offset for the next chunk
+        current_offset += offset_sec
+        
+    return full_transcript
+
+final_data = transcribe_chunks_with_timestamps(AUDIO_DATA_DIR / "chunks", offset_sec=30)
+
+# print final transcription result
+for item in final_data:
+    print(f"[{item['start']}s - {item['end']}s]: {item['text']}")
+    
+# ======================================================
+# Step 8: Exporting with Timestamps
+# ======================================================
+
+# save to a json
+with open("final_transcript.json", "w") as f:
+    json.dump(final_data, f, indent=4)
+    
+# export to txt file
+with open("final_transcript.txt", "w") as f:
+    for item in final_data:
+        f.write(f"[{item['start']}s - {item['end']}s]: {item['text']}\n")
+print("✅ Exported: final_transcript.txt")
+
+# export to SRT (Subtitles)
+with open("final_transcript.srt", "w") as f:
+    for i, item in enumerate(final_data, 1):
+       f.write(f"{i}\n{item['start']} --> {item['end']}\n{item['text']}\n\n")
+print("✅ Exported: final_transcript.srt")
